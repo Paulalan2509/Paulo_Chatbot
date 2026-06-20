@@ -1,0 +1,113 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paulo Chatbot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-2xl bg-white rounded-2xl shadow-lg flex flex-col h-[80vh]">
+
+        <!-- Header -->
+        <div class="bg-slate-800 text-white px-6 py-4 rounded-t-2xl flex items-center gap-3">
+            <div class="w-3 h-3 bg-emerald-400 rounded-full"></div>
+            <h1 class="text-lg font-semibold">Paulo Assistant</h1>
+        </div>
+
+        <!-- Message history -->
+        <div id="chat-window" class="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+            <!-- Messages are inserted here by JavaScript. Empty on load by design —
+                 Phase 2B will add persistent history loading from the database. -->
+        </div>
+
+        <!-- Typing indicator, hidden by default -->
+        <div id="typing-indicator" class="px-6 pb-2 text-sm text-slate-400 hidden">
+            Paulo is typing<span class="animate-pulse">...</span>
+        </div>
+
+        <!-- Input area -->
+        <form id="chat-form" class="border-t border-slate-200 px-4 py-3 flex gap-2">
+            {% csrf_token %}
+            <input
+                type="text"
+                id="message-input"
+                autocomplete="off"
+                placeholder="Type a message..."
+                maxlength="500"
+                class="flex-1 border border-slate-300 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            >
+            <button
+                type="submit"
+                class="bg-emerald-500 hover:bg-emerald-600 text-white rounded-full px-5 py-2 font-medium transition-colors"
+            >
+                Send
+            </button>
+        </form>
+
+    </div>
+
+    <script>
+        const chatWindow = document.getElementById('chat-window');
+        const chatForm = document.getElementById('chat-form');
+        const messageInput = document.getElementById('message-input');
+        const typingIndicator = document.getElementById('typing-indicator');
+
+        // Django requires this exact CSRF token to accept POST requests.
+        // It's rendered into a hidden input by {% csrf_token %} above.
+        function getCsrfToken() {
+            return document.querySelector('[name=csrfmiddlewaretoken]').value;
+        }
+
+        function appendMessage(text, sender) {
+            const bubble = document.createElement('div');
+            bubble.className = sender === 'user'
+                ? 'ml-auto max-w-xs bg-emerald-500 text-white rounded-2xl rounded-br-sm px-4 py-2'
+                : 'mr-auto max-w-xs bg-slate-100 text-slate-800 rounded-2xl rounded-bl-sm px-4 py-2';
+            bubble.textContent = text;
+            chatWindow.appendChild(bubble);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        chatForm.addEventListener('submit', async function (event) {
+            // Without this, the browser's default form behavior reloads
+            // the entire page on submit — exactly what AJAX is meant to avoid.
+            event.preventDefault();
+
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            appendMessage(message, 'user');
+            messageInput.value = '';
+            typingIndicator.classList.remove('hidden');
+
+            try {
+                const response = await fetch("{% url 'chatbot:send_message' %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    },
+                    body: JSON.stringify({ message: message }),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    appendMessage(data.error || "Something went wrong.", 'bot');
+                } else {
+                    appendMessage(data.response, 'bot');
+                }
+            } catch (error) {
+                // Network failure — server unreachable, connection dropped, etc.
+                appendMessage("Connection error. Please try again.", 'bot');
+            } finally {
+                typingIndicator.classList.add('hidden');
+            }
+        });
+    </script>
+
+</body>
+</html>
